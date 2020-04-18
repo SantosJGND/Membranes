@@ -321,9 +321,9 @@ def filter_output(samps_tracks):
     layout= go.Layout(
         title= 'Spect. peaks',
         xaxis= dict(
-            title= 'time (s)'),
+            title= 'transect coordinate'),
         yaxis= dict(
-            title= 'frequency')
+            title= 'distance in transect')
     )
     fig= go.Figure(data= fig,layout= layout)
 

@@ -7,7 +7,4 @@ extract intensity values of cell membranes.
 
 #### Attempt 1: using transects.
 
-Visit notebook: 
-
-Example image: 
-![image](1.tif)
+Visit notebook: [notebook](https://nbviewer.jupyter.org/github/SantosJGND/Membranes/blob/master/transects_MS.ipynb)
