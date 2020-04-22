@@ -77,14 +77,14 @@ from sklearn.datasets.samples_generator import make_blobs
 from scipy.stats import norm
 
 def frame_peaks(array_spec,
-                spec_fs, 
                 spec_ts,
                 frame= 0,
+                pxl_dist= 4e-3,
                 Sample_N= 500,
                 p_threshold= 0.0004,
                 amp_cap= 1e6,
                 peak_cap= .3,
-                peak_iso= 200,
+                peak_iso= .1,
                 band_qtl= 0.02,
                 frame_plot= False,
                label= 'title',
@@ -93,10 +93,17 @@ def frame_peaks(array_spec,
     '''
     get peaks from single frame of strictly positive values.
     frame to be found as column of array array_spec. 
+    - pxl_dist= distance between pixels.
     - spec_fs = range of variation.
     - spec_ts = frame factor list.
     - frame= index in array_spec 2nd dimension (columns).
     '''
+    ## get spec
+    transect_length= array_spec.shape[0] * pxl_dist
+    
+    peak_iso= transect_length * peak_iso
+    spec_fs= np.linspace(0,transect_length,array_spec.shape[0])
+    
     ## get probs from
     probs= list(array_spec[:,frame]) 
     probs= np.array(probs)
