@@ -1,19 +1,23 @@
 
 import scipy
 import numpy as np
-from sklearn.neighbors import KernelDensity
-from sklearn.decomposition import PCA
-from sklearn.model_selection import GridSearchCV
-from sklearn.cluster import estimate_bandwidth
-from sklearn.cluster import MeanShift, estimate_bandwidth
+
+from scipy.signal import find_peaks, find_peaks_cwt
 
 import pandas as pd
 import itertools as it
 import os
 
 import plotly
-import plotly.plotly as py
 import plotly.graph_objs as go
+from scipy.signal import find_peaks, find_peaks_cwt
+
+##
+import plotly
+import plotly.graph_objs as go
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+
+
 
 def read_image(img,data_dir= 'data/',flt_sep= '.',sort_abc= True):
     '''
@@ -72,148 +76,117 @@ def get_spectros(data_dir):
     return image_dict
 
 
-from sklearn.cluster import MeanShift, estimate_bandwidth
-from sklearn.datasets.samples_generator import make_blobs
-from scipy.stats import norm
-
-def frame_peaks(array_spec,
-                spec_ts,
-                frame= 0,
-                pxl_dist= 4e-3,
-                Sample_N= 500,
-                p_threshold= 0.0004,
-                amp_cap= 1e6,
-                peak_cap= .3,
-                peak_iso= .1,
-                band_qtl= 0.02,
-                frame_plot= False,
-               label= 'title',
-               extremes= True,
-               center= True):
-    '''
-    get peaks from single frame of strictly positive values.
-    frame to be found as column of array array_spec. 
-    - pxl_dist= distance between pixels.
-    - spec_fs = range of variation.
-    - spec_ts = frame factor list.
-    - frame= index in array_spec 2nd dimension (columns).
-    '''
-    ## get spec
-    transect_length= array_spec.shape[0] * pxl_dist
+class frame_obj:
+    def __init__(self, amps ,frame= "0"):
+        self.amps= amps
+        self.frame= frame
     
-    peak_iso= transect_length * peak_iso
-    spec_fs= np.linspace(0,transect_length,array_spec.shape[0])
-    
-    ## get probs from
-    probs= list(array_spec[:,frame]) 
-    probs= np.array(probs)
-
-    probs[probs > amp_cap]= amp_cap
-
-    prob_sum= np.sum(probs)
-    probs= probs / prob_sum
+    def peaks(self, spec_fs, peak_cap= .35):
         
-    
-    # #############################################################################
-    # Compute clustering with MeanShift
-    # The following bandwidth can be automatically detected using
-    new_freqs= np.random.choice(list(spec_fs),Sample_N,replace= True,p= probs)
-
-    new_freqs= new_freqs.reshape(-1,1)
-
-    bandwidth = estimate_bandwidth(new_freqs, quantile=band_qtl, n_samples=Sample_N)
-    
-    if bandwidth== 0:
-        bandwidth= peak_iso
-
-    ms = MeanShift(bandwidth=bandwidth, bin_seeding=False,cluster_all= False).fit(new_freqs)
-
-    labels = ms.labels_
-    cluster_centers = ms.cluster_centers_
-
-    cluster_centers= list(it.chain(*cluster_centers))
-
-    ## trim_clusters:
-    ### interpolation makes it easier to chose between neibhour centroids
-    ### that are unlikely to exist as obs. frequency values.
-    from scipy.interpolate import interp1d
-    f2= interp1d(spec_fs, array_spec[:,frame], kind='cubic')
-    
-    cluster_centers= cluster_threshold(cluster_centers,f2,t= peak_iso)
-    #### get amplitudes of peaks and store them
-    cluster_center_amps= {}
-    peak_cent= []
-    amps_centres= []
-
-    shapes= []
-    for cent in sorted(cluster_centers):
+        if peak_cap >= 1: 
+            peak_min= peak_cap 
+        else:
+            peak_min= max(self.amps) * peak_cap
             
-        closest= abs(spec_fs - cent)
+        clust_find, _= find_peaks(self.amps,
+                                  height= peak_min)
         #
-        closet= np.argmin(closest)
+        self.cluster_centers= spec_fs[clust_find]
+        self.amps_centres= self.amps[clust_find]
+        
 
-        amp_sel= array_spec[closet,frame]
-        cluster_center_amps[cent]= amp_sel
+    def maxima(self):
+        if len(self.cluster_centers) != 1:
 
-    cluster_amps= list(cluster_center_amps.values())
+            clust_dict= {
+                self.cluster_centers[x]: self.amps_centres[x] for x in range(len(self.cluster_centers))
+            }
 
-    for cent in sorted(cluster_centers):
-        amp_sel= cluster_center_amps[cent]        
-        amp_sel_pval= norm.cdf(amp_sel,loc= np.mean(cluster_amps),scale= np.std(cluster_amps))
-
-        #print(cent, amp_sel,amp_sel_pval)
-        #print(amp_sel,np.mean(cluster_amps))
-        if amp_sel < np.mean(cluster_amps):
-            continue
-        if amp_sel >= peak_cap:
-            peak_cent.append(cent)
-            amps_centres.append(amp_sel)
+            amps_sort=  sorted(clust_dict,key= clust_dict.get, reverse= True)
+            self.cluster_centers= amps_sort[:2]
+            self.amps_centres= [clust_dict[x] for x in cluster_centers]
     
+    def extremes(self):
+        ext= [min(self.cluster_centers),max(self.cluster_centers)]
+        
+        ext_idx= [x for x in range(len(self.cluster_centers)) if self.cluster_centers[x] in ext]
+        
+        self.cluster_centers= [self.cluster_centers[x] for x in ext_idx]
+        self.amps_centres= [self.amps_centres[x] for x in ext_idx]
+        
+    def centre(self):
+        mean_c= np.mean(list(set(self.cluster_centers)))
+        self.orimean= mean_c
+        self.cluster_centers= [x - mean_c for x in self.cluster_centers]
+        
+#spec_ts= surface
 
-    cluster_centers= peak_cent
+class peak_finder:
     
-    # remove extremes if necessary
-    ext= [min(cluster_centers),max(cluster_centers)]
-    if extremes:
-        ext_idx= [x for x in range(len(cluster_centers)) if cluster_centers[x] in ext]
+    def __init__(self, pxl_dist= 4e-4, peak_cap= .35):
+        self.pxl_dist= pxl_dist
+        self.peak_cap= peak_cap
+        self.centered= False
         
-        cluster_centers= [cluster_centers[x] for x in ext_idx]
-        amps_centres= [amps_centres[x] for x in ext_idx]
-        
-    #### Center if requested.
-    if center:
-        mean_c= np.mean(list(set(cluster_centers)))
-        cluster_centers= [x - mean_c for x in cluster_centers]
-        
-        spec_fs= spec_fs - mean_c
+    def reset(self):
+        self.centered= False
+        self.spec_ts= []
     
-    peak_cent= cluster_centers
-    
-    ## get time stamps for each of the peaks.
-    time_spec= [spec_ts[frame]]* len(amps_centres)
+    def peaks(self, array_spec, spec_ts= []):
+        
+        transect_length= array_spec.shape[0] * self.pxl_dist
+        spec_fs= np.linspace(0,transect_length,array_spec.shape[0])
+        
+        frames= []
+        for idx in range(array_spec.shape[1]):
+            frame= frame_obj(array_spec[:,idx],frame= idx)
+            frame.peaks(spec_fs, peak_cap= self.peak_cap)
+            frames.append(frame)
+        
+        self.spec_fs= spec_fs
+        self.frames= frames
+        
+        if spec_ts:
+            self.spec_ts= spec_ts
+        else:
+            self.spec_ts= list(range(array_spec.shape[0]))
 
-    if frame_plot:
+    def maxima(self):
+        for frame in self.frames:
+            frame.maxima()
+    
+    def extremes(self):
+        for frame in self.frames:
+            frame.extremes()
+    
+    def centre(self):
+        for frame in self.frames:
+            frame.centre()
         
-        kde= KernelDensity(kernel='gaussian', bandwidth= bandwidth).fit(new_freqs)
-        X_plot = np.linspace(0, max(spec_fs) + 100, 1000)[:, np.newaxis]
-        log_dens = kde.score_samples(X_plot)
+        self.centered= True
+
+    def plot(self, idx= 0):
+        frame= self.frames[idx]
+        surface= np.array(self.spec_fs)
         
+        if self.centered:
+            surface= surface - np.mean(frame.orimean)
         fig= [go.Scatter(
-            x= spec_fs,
-            y= array_spec[:,frame],
+            x= surface,
+            y= frame.amps,
             mode= 'lines'
         )]
         
         shapes= []
 
-        for center in peak_cent:
+        for center in frame.cluster_centers:
 
             shapes.append({
                 'type': 'line',
                 'x0': center,
                 'y0': 0,
                 'x1': center,
-                'y1': max(array_spec[:,frame]),
+                'y1': max(frame.amps),
                 'line': {
                     'color': 'red',
                     'width': 4,
@@ -222,44 +195,39 @@ def frame_peaks(array_spec,
             })
         
         layout= go.Layout(
-            title= 'ID: {}; frame inx: {}'.format(label, frame),
+            title= 'ID: {}; frame inx: {}'.format(str(frame), idx),
             shapes= shapes,
             xaxis= dict(title= 'frequency'),
             yaxis= dict(title= 'amplitude')
         )
         
         figure_frame= go.Figure(data= fig,layout= layout)
+        iplot(figure_frame)
         
-        return peak_cent, time_spec, amps_centres, figure_frame
-
-    else:
-        return peak_cent, time_spec, amps_centres
-
-
+    def package(self):
+        ts_list= []
+        peaks= []
+        amps= []
+        
+        for frame in self.frames:
+            #
+            peaks.extend(frame.cluster_centers)
+            ts_list.extend([self.spec_ts[frame.frame]]* len(frame.cluster_centers))
+            amps.extend(frame.amps_centres)
+        
+        self.tracks= np.array([
+            ts_list,
+            peaks,
+            amps
+        ]).T
     
-def cluster_threshold(center_list,scor_func,t= 200):
-    trim_cl= {}
-
-    for cml in center_list:
-        if not trim_cl:
-            trim_cl[0]= np.array([cml])
-            continue
-
-        d= 0
-
-        for clamp in trim_cl.keys(): 
-            dists= abs(trim_cl[clamp] - cml)
-
-            if min(dists) < t:
-                trim_cl[clamp]= np.array([*list(trim_cl[clamp]),cml])
-                d += 1
-
-        if d == 0:
-            trim_cl[len(trim_cl)]= np.array([cml])
+    def write(self, outdir= './', filename= 'out.txt'):
+        table= pd.DataFrame(self.tracks,columns= ['frame_pos','peakX','peak.amp'])
+        filename= outdir + filename
+        table.to_csv(filename, sep= '\t', index= False)
+        
+        
+    def get(self):
+        return self.tracks
     
-    pval_trim= [[scor_func(x) for x in trim_cl[z]] for z in trim_cl.keys()]
-    #pval_trim= [[np.exp(sklearn_scor.score_samples(x.reshape(-1,1))) for x in trim_cl[z]] for z in trim_cl.keys()]
-    trim_cl= [trim_cl[x][np.argmax(pval_trim[x])] for x in trim_cl.keys()]
-
-    return trim_cl
 

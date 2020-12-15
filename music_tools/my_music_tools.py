@@ -236,7 +236,8 @@ def frame_peaks(array_spec,
     
     cluster_centers= cluster_threshold(cluster_centers,peak_iso,f2)
     cluster_centers= cluster_threshold(cluster_centers,peak_iso,f2)
-
+    print(len(cluster_centers))
+    
     ####
     #### get amplitudes of peaks and store them
     
@@ -244,6 +245,8 @@ def frame_peaks(array_spec,
     amps_centres= []
 
     shapes= []
+    ### remove clusters bellow amp_cap.
+    ### attribute centers the closes amplitude available. 
     for cent in cluster_centers:
 
         closest= abs(spec_fs - cent)
@@ -271,8 +274,6 @@ def frame_peaks(array_spec,
             mode= 'lines'
         )]
         
-        #fig= [go.Scatter(x=X_plot[:, 0], y=np.exp(log_dens), mode='lines', fill='tozeroy', line=dict(color='#AAAAFF', width=2))]
-
         shapes= []
 
         for center in peak_cent:
