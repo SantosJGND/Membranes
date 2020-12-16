@@ -195,7 +195,7 @@ class peak_finder:
             })
         
         layout= go.Layout(
-            title= 'ID: {}; frame inx: {}'.format(str(frame), idx),
+            title= 'ID: {}; frame inx: {}'.format(str(frame.frame), idx),
             shapes= shapes,
             xaxis= dict(title= 'frequency'),
             yaxis= dict(title= 'amplitude')
