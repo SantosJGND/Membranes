@@ -91,26 +91,39 @@ class frame_obj:
         clust_find, _= find_peaks(self.amps,
                                   height= peak_min)
         #
+        self.clust_idx= clust_find
         self.cluster_centers= spec_fs[clust_find]
         self.amps_centres= self.amps[clust_find]
+
+        self.neighs= {
+            idx: {
+                "c": [spec_fs[idx-1], spec_fs[idx +1]],
+                "a": [self.amps[idx-1], self.amps[idx+1]]
+            } for idx in clust_find
+        }
         
 
     def maxima(self):
         if len(self.cluster_centers) != 1:
 
+            clust_idx= {
+                self.cluster_centers[x]: self.clust_idx[x] for x in range(len(self.cluster_centers))
+            }
             clust_dict= {
                 self.cluster_centers[x]: self.amps_centres[x] for x in range(len(self.cluster_centers))
             }
 
             amps_sort=  sorted(clust_dict,key= clust_dict.get, reverse= True)
             self.cluster_centers= amps_sort[:2]
-            self.amps_centres= [clust_dict[x] for x in cluster_centers]
+            self.clust_idx= [clust_idx[x] for x in self.cluster_centers]
+            self.amps_centres= [clust_dict[x] for x in self.cluster_centers]
     
     def extremes(self):
         ext= [min(self.cluster_centers),max(self.cluster_centers)]
         
         ext_idx= [x for x in range(len(self.cluster_centers)) if self.cluster_centers[x] in ext]
         
+        self.clust_idx= [self.clust_idx[x] for x in ext_idx]
         self.cluster_centers= [self.cluster_centers[x] for x in ext_idx]
         self.amps_centres= [self.amps_centres[x] for x in ext_idx]
         
@@ -118,6 +131,8 @@ class frame_obj:
         mean_c= np.mean(list(set(self.cluster_centers)))
         self.orimean= mean_c
         self.cluster_centers= [x - mean_c for x in self.cluster_centers]
+        for idx in self.neighs.keys():
+            self.neighs[idx]["c"]= [x - mean_c for x in self.neighs[idx]["c"]]
         
 #spec_ts= surface
 
@@ -209,12 +224,21 @@ class peak_finder:
         peaks= []
         amps= []
         
+        new_array= []
+
         for frame in self.frames:
             #
-            peaks.extend(frame.cluster_centers)
-            ts_list.extend([self.spec_ts[frame.frame]]* len(frame.cluster_centers))
-            amps.extend(frame.amps_centres)
+            for idx in range(len(frame.cluster_centers)):
+                clidx= frame.clust_idx[idx]
+                nline= [self.spec_ts[frame.frame]]
+                nline.extend([frame.neighs[clidx]["c"][0], frame.cluster_centers[idx], frame.neighs[clidx]["c"][1]])
+                nline.extend([frame.neighs[clidx]["a"][0], frame.amps_centres[idx], frame.neighs[clidx]["a"][1]])
+                new_array.append(nline)
+                peaks.extend(frame.cluster_centers)
+                ts_list.extend([self.spec_ts[frame.frame]]* len(frame.cluster_centers))
+                amps.extend(frame.amps_centres)
         
+        self.neigh_tracks= np.array(new_array)
         self.tracks= np.array([
             ts_list,
             peaks,
@@ -222,7 +246,7 @@ class peak_finder:
         ]).T
     
     def write(self, outdir= './', filename= 'out.txt'):
-        table= pd.DataFrame(self.tracks,columns= ['frame_pos','peakX','peak.amp'])
+        table= pd.DataFrame(self.neigh_tracks,columns= ['frame_pos','peakXm1','peakX','peakXp1','peak.amp.m1','peak.amp','peak.amp.p1'])
         filename= outdir + filename
         table.to_csv(filename, sep= '\t', index= False)
         
