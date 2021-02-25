@@ -164,7 +164,7 @@ class peak_finder:
         if spec_ts:
             self.spec_ts= spec_ts
         else:
-            self.spec_ts= list(range(array_spec.shape[0]))
+            self.spec_ts= list(range(array_spec.shape[1]))
 
     def maxima(self):
         for frame in self.frames:
@@ -225,7 +225,6 @@ class peak_finder:
         amps= []
         
         new_array= []
-
         for frame in self.frames:
             #
             for idx in range(len(frame.cluster_centers)):
